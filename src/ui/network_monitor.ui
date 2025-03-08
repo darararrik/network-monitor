@@ -51,7 +51,7 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="locale_monitoring">
        <property name="sizePolicy">
@@ -410,7 +410,7 @@
          <rect>
           <x>60</x>
           <y>20</y>
-          <width>49</width>
+          <width>131</width>
           <height>16</height>
          </rect>
         </property>

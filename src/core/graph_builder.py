@@ -25,6 +25,10 @@ class GraphBuilder:
         self.download_visible = True
         self.upload_visible = True
 
+        # Данные для графиков
+        self.download_speeds = []
+        self.upload_speeds = []
+
     def configure_graph(self):
         """Настройка графика"""
         self.graph.setBackground(None)
@@ -41,18 +45,32 @@ class GraphBuilder:
 
     def update_graph(self, download_speeds, upload_speeds):
         """Обновление графика"""
+        print(f"Вызван update_graph с данными:")
+        print(f"download_speeds: {download_speeds}")
+        print(f"upload_speeds: {upload_speeds}")
+        
         if not download_speeds or not upload_speeds:
+            print("Нет данных для обновления графика")
             return
+            
+        # Сохраняем данные
+        self.download_speeds = download_speeds
+        self.upload_speeds = upload_speeds
             
         # Обновляем временную ось
         self.time_axis = list(range(len(download_speeds)))
+        print(f"Временная ось: {self.time_axis}")
         
         # Обновляем кривые если они видимы
         if self.download_visible:
+            print("Обновляем кривую загрузки")
             self.download_curve.setData(self.time_axis, download_speeds)
             
         if self.upload_visible:
+            print("Обновляем кривую отдачи")
             self.upload_curve.setData(self.time_axis, upload_speeds)
+            
+        print("Обновление графика завершено")
 
     def set_download_visible(self, visible):
         """Устанавливает видимость линии загрузки"""
@@ -66,6 +84,7 @@ class GraphBuilder:
 
     def clear_graphs(self):
         """Очищает графики и сбрасывает данные"""
+        print("Очистка графиков в GraphBuilder...")
         # Очищаем данные
         self.download_speeds = []
         self.upload_speeds = []
@@ -73,4 +92,8 @@ class GraphBuilder:
         
         # Очищаем кривые
         self.download_curve.setData([], [])
-        self.upload_curve.setData([], []) 
+        self.upload_curve.setData([], [])
+        
+        # Обновляем отображение
+        self.graph.replot()
+        print("Графики очищены") 

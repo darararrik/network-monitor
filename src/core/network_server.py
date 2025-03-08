@@ -121,6 +121,7 @@ class NetworkServer:
             
             if cmd_type == 'get_adapters':
                 adapters = self.network_monitor.get_adapters()
+                print(f"Отправляем список адаптеров: {adapters}")
                 return {
                     'type': 'adapters_list',
                     'adapters': adapters
@@ -128,7 +129,9 @@ class NetworkServer:
                 
             elif cmd_type == 'get_adapter_info':
                 adapter_name = command.get('adapter')
+                print(f"Получаем информацию об адаптере: {adapter_name}")
                 info = self.network_monitor.get_adapter_info(adapter_name)
+                print(f"Информация об адаптере: {info}")
                 return {
                     'type': 'adapter_info',
                     'info': info
