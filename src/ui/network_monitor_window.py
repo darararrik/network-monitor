@@ -84,10 +84,10 @@ class NetworkMonitorWindow(QMainWindow):
             self.disconnect_from_remote()
             return
 
-        if not hasattr(self, "remoteIPInput") or not hasattr(self, "remotePortInput"):
+        if not hasattr(self, "remoteIPinput") or not hasattr(self, "remotePortInput"):
             return
 
-        ip = self.remoteIPInput.text()
+        ip = self.remoteIPinput.text()
         try:
             port = int(self.remotePortInput.text())
         except ValueError:
@@ -103,7 +103,7 @@ class NetworkMonitorWindow(QMainWindow):
         if self.remote_client.connect():
             self.remote_connected = True
             self.connectRemoteButton.setText("Отключиться")
-            self.remoteIPInput.setEnabled(False)
+            self.remoteIPinput.setEnabled(False)
             self.remotePortInput.setEnabled(False)
             
             # Загружаем список адаптеров удаленного компьютера
@@ -125,7 +125,7 @@ class NetworkMonitorWindow(QMainWindow):
             self.remote_client = None
             self.remote_connected = False
             self.connectRemoteButton.setText("Подключиться")
-            self.remoteIPInput.setEnabled(True)
+            self.remoteIPinput.setEnabled(True)
             self.remotePortInput.setEnabled(True)
             
             # Очищаем данные
