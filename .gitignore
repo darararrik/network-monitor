@@ -1,0 +1,8 @@
+echo "# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+.idea/
+*.ui.autosave" > .gitignore
