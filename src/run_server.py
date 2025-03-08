@@ -41,7 +41,6 @@ def main():
     # Создаем и запускаем сервер
     server = NetworkServer()
     try:
-        server.start()
         print("\n=== Информация для подключения ===")
         print(f"Порт: {server.port}")
         print("\nДоступные IP-адреса:")
@@ -49,14 +48,15 @@ def main():
             print(f"* {ip}")
         print("\nИспользуйте любой из этих адресов для подключения клиента.")
         print("Для локального подключения можно использовать: 127.0.0.1")
-        print("\nСервер запущен. Нажмите Ctrl+C для остановки.")
+        print("\nЗапуск сервера...")
         
-        while True:
-            pass
+        server.start()  # Эта функция теперь блокирующая
+        
     except KeyboardInterrupt:
-        print("\nОстанавливаем сервер...")
+        print("\nПолучен сигнал остановки...")
+    finally:
+        print("Останавливаем сервер...")
         server.stop()
-        print("Сервер остановлен.")
 
 if __name__ == "__main__":
     main() 

@@ -84,37 +84,44 @@ class NetworkMonitorWindow(QMainWindow):
             self.disconnect_from_remote()
             return
 
-        if not hasattr(self, "remoteIPinput") or not hasattr(self, "remotePortInput"):
+        if not hasattr(self, "remoteIPInput") or not hasattr(self, "remotePortInput"):
+            print("Ошибка: Не найдены поля для ввода IP и порта")
             return
 
-        ip = self.remoteIPinput.text()
+        ip = self.remoteIPInput.text()
         try:
             port = int(self.remotePortInput.text())
         except ValueError:
-            QMessageBox.warning(self, "Ошибка", "Неверный формат порта")
+            if hasattr(self, "remoteComputerLabel"):
+                self.remoteComputerLabel.setText("Ошибка: неверный формат порта")
             return
 
         if not ip:
-            QMessageBox.warning(self, "Ошибка", "Введите IP-адрес")
+            if hasattr(self, "remoteComputerLabel"):
+                self.remoteComputerLabel.setText("Ошибка: введите IP-адрес")
             return
 
+        # Показываем статус подключения
+        if hasattr(self, "remoteComputerLabel"):
+            self.remoteComputerLabel.setText(f"Подключение к {ip}:{port}...")
+        
         # Создаем клиент и подключаемся
         self.remote_client = NetworkClient(ip, port)
         if self.remote_client.connect():
             self.remote_connected = True
             self.connectRemoteButton.setText("Отключиться")
-            self.remoteIPinput.setEnabled(False)
+            self.remoteIPInput.setEnabled(False)
             self.remotePortInput.setEnabled(False)
             
             # Загружаем список адаптеров удаленного компьютера
             self.load_remote_adapters()
             
-            # Получаем имя компьютера
-            self.get_remote_computer_name()
-            
-            QMessageBox.information(self, "Успех", "Подключено к удаленному компьютеру")
+            # Обновляем статус подключения
+            if hasattr(self, "remoteComputerLabel"):
+                self.remoteComputerLabel.setText(f"Подключено к: {ip}:{port}")
         else:
-            QMessageBox.critical(self, "Ошибка", "Не удалось подключиться к удаленному компьютеру")
+            if hasattr(self, "remoteComputerLabel"):
+                self.remoteComputerLabel.setText(f"Ошибка подключения к {ip}:{port}")
             self.remote_client = None
             self.remote_connected = False
 
@@ -125,7 +132,7 @@ class NetworkMonitorWindow(QMainWindow):
             self.remote_client = None
             self.remote_connected = False
             self.connectRemoteButton.setText("Подключиться")
-            self.remoteIPinput.setEnabled(True)
+            self.remoteIPInput.setEnabled(True)
             self.remotePortInput.setEnabled(True)
             
             # Очищаем данные
@@ -134,6 +141,8 @@ class NetworkMonitorWindow(QMainWindow):
             if hasattr(self, "remoteInfoTable"):
                 for i in range(self.remoteInfoTable.rowCount()):
                     self.remoteInfoTable.item(i, 1).setText('-')
+            if hasattr(self, "remoteComputerLabel"):
+                self.remoteComputerLabel.setText("Отключено")
 
     def load_remote_adapters(self):
         """Загружает список адаптеров удаленного компьютера"""

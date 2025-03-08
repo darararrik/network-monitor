@@ -51,7 +51,7 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="locale_monitoring">
        <property name="sizePolicy">
@@ -395,14 +395,14 @@
        <widget class="QPushButton" name="connectRemoteButton">
         <property name="geometry">
          <rect>
-          <x>360</x>
+          <x>334</x>
           <y>50</y>
-          <width>75</width>
-          <height>24</height>
+          <width>101</width>
+          <height>31</height>
          </rect>
         </property>
         <property name="text">
-         <string>PushButton</string>
+         <string>Подключиться</string>
         </property>
        </widget>
        <widget class="QLabel" name="remoteComputerLabel">
