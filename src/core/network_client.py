@@ -4,6 +4,8 @@ from typing import Optional, Dict, Any
 
 class NetworkClient:
     def __init__(self, host: str, port: int = 5000):
+        self.download_speeds = []
+        self.upload_speeds = []
         self.host = host
         self.port = port
         self.socket: Optional[socket.socket] = None
