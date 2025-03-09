@@ -17,16 +17,28 @@ class RemoteMonitoring:
         """Настройка удаленного мониторинга"""
         print("Настройка удаленного мониторинга...")
         
-        # Подключаем кнопку подключения
-        if hasattr(self.window, "connectRemoteButton"):
-            self.window.connectRemoteButton.clicked.connect(self.connect_to_remote)
+        # Настраиваем таблицу информации о подключении
+        self.setup_remote_table()
         
-        # Устанавливаем значение порта по умолчанию
-        if hasattr(self.window, "remotePortInput"):
-            self.window.remotePortInput.setText("5000")
-
+        # # Настраиваем график скорости
+        # self.setup_remote_graph()
+        
+        # Настраиваем начальные значения
         if hasattr(self.window, "remoteIPInput"):
             self.window.remoteIPInput.setText("127.0.0.1")
+        if hasattr(self.window, "remotePortInput"):
+            self.window.remotePortInput.setText("5000")
+        if hasattr(self.window, "remoteComputerLabel"):
+            self.window.remoteComputerLabel.setText("Не подключено")
+        
+        # Настраиваем кнопку подключения
+        if hasattr(self.window, "connectRemoteButton"):
+            self.window.connectRemoteButton.clicked.connect(self.connect_to_remote)
+
+        # Настраиваем кнопку ping
+        if hasattr(self.window, "pingRemoteButton"):
+            self.window.pingRemoteButton.clicked.connect(self.ping_remote)
+        
         # Подключаем обработчик выбора адаптера
         if hasattr(self.window, "remoteAdapterList"):
             self.window.remoteAdapterList.currentTextChanged.connect(self.on_remote_adapter_selected)
@@ -358,4 +370,42 @@ class RemoteMonitoring:
         # Очищаем график
         if self.remote_graph_builder:
             self.remote_graph_builder.clear_graphs()
+
+    def ping_remote(self):
+        """Пинг удаленного компьютера"""
+        import subprocess
+        import platform
+        
+        # Получаем IP из поля ввода
+        ip = self.window.remoteIPInput.text() if hasattr(self.window, "remoteIPInput") else "127.0.0.1"
+        
+        # Определяем команду пинга в зависимости от ОС
+        param = '-n' if platform.system().lower() == 'windows' else '-c'
+        command = ['ping', param, '4', ip]
+        
+        try:
+            # Запускаем процесс пинга
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+            
+            # Обрабатываем результат
+            result = stdout.decode('cp866' if platform.system().lower() == 'windows' else 'utf-8')
+            
+            # Определяем успешность пинга
+            if "Reply from" in result or "bytes from" in result:
+                status = "Пинг успешен!"
+            else:
+                status = "Пинг не удался!"
+                
+            # Отображаем результат в интерфейсе
+            if hasattr(self.window, "remoteComputerLabel"):
+                self.window.remoteComputerLabel.setText(f"{status} ({ip})")
+                
+            # Возвращаем подробный результат для возможного отображения
+            return result
+            
+        except Exception as e:
+            if hasattr(self.window, "remoteComputerLabel"):
+                self.window.remoteComputerLabel.setText(f"Ошибка пинга: {str(e)}")
+            return None
 
