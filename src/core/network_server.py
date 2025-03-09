@@ -241,6 +241,24 @@ class NetworkServer(QObject):
                         self._send_adapter_info(client_id, message.get('adapter'))
                     elif message['type'] == 'get_speeds':
                         self._send_speeds(client_id, message.get('adapter_name'))
+                    elif message['type'] == 'start_measurement':
+                        # Запускаем измерение для указанного адаптера
+                        adapter_name = message.get('adapter')
+                        self.network_monitor.start_measurement(adapter_name)
+                        response = {
+                            'type': 'measurement_started',
+                            'adapter': adapter_name
+                        }
+                        self._send_message(client_id, response)
+                        self.log_message.emit(f"Запущено измерение для адаптера {adapter_name}")
+                    elif message['type'] == 'stop_measurement':
+                        # Останавливаем измерение
+                        self.network_monitor.stop_measurement()
+                        response = {
+                            'type': 'measurement_stopped'
+                        }
+                        self._send_message(client_id, response)
+                        self.log_message.emit("Измерение остановлено")
                     else:
                         self.log_message.emit(f"Неизвестный тип сообщения: {message['type']}")
                 except Exception as e:
