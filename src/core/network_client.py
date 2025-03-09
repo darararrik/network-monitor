@@ -82,9 +82,8 @@ class NetworkClient:
     def get_speeds(self) -> Optional[dict]:
         """Получает текущие значения скорости"""
         response = self._send_command({'type': 'get_speeds'})
-        print("Ответ от сервера в get_speeds:", response)  # Отладочная информация
         if response and response.get('type') == 'speeds':
             speeds = response.get('speeds', {})
-            speeds['time'] = response.get('time', '-')  # Добавляем время из ответа сервера
+            speeds['time'] = response.get('time', '-')
             return speeds
         return None 

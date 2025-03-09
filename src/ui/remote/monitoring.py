@@ -309,7 +309,6 @@ class RemoteMonitoring:
             
         # Получаем текущую скорость
         speed_data = self.remote_client.get_speeds()
-        print("Получены данные от сервера:", speed_data)  # Отладочная информация
         if not speed_data:
             return
             
@@ -329,7 +328,6 @@ class RemoteMonitoring:
         if hasattr(self.window, "remoteInfoTable"):
             # Обновляем время замера
             time_value = speed_data.get('time', '-')
-            print(f"Обновляем время замера: {time_value}")  # Отладочная информация
             self.window.remoteInfoTable.item(8, 1).setText(time_value)
             
             # Обновляем скорость загрузки
