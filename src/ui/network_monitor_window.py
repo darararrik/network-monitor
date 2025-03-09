@@ -11,6 +11,7 @@ from src.ui.remote.monitoring import RemoteMonitoring
 from src.ui.ping_tool import PingTool
 from src.ui.traceroute_tool import TracerouteTool
 from src.ui.network_discovery import NetworkDiscovery
+from src.ui.server_management import ServerManagement
 
 class NetworkMonitorWindow(QMainWindow):
     def __init__(self):
@@ -47,6 +48,9 @@ class NetworkMonitorWindow(QMainWindow):
         
         # Инициализация инструмента поиска сети
         self.network_discovery = NetworkDiscovery(self)
+        
+        # Инициализация серверной части
+        self.server_management = ServerManagement(self)
 
     def setup_ui(self):
             """Настройка пользовательского интерфейса"""
