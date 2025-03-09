@@ -93,6 +93,9 @@ class NetworkServer(QObject):
             # Выводим информацию о запуске
             self.log_message.emit("\n=== Информация о сервере ===")
             self.log_message.emit(f"Сервер запущен на {local_ip}:{port}")
+            self.log_message.emit("\nДля тестирования на этом компьютере:")
+            self.log_message.emit(f"1. Используйте IP-адрес: {local_ip}")
+            self.log_message.emit(f"2. Порт в обоих случаях: {port}")
             
             # Запускаем сервер в отдельном потоке
             self.is_running = True
@@ -100,7 +103,7 @@ class NetworkServer(QObject):
             self.server_thread.daemon = True
             self.server_thread.start()
             
-            self.log_message.emit(f"Сервер успешно запущен и готов к подключениям")
+            self.log_message.emit(f"\nСервер успешно запущен и готов к подключениям")
             self.server_started.emit(port)
             return True
             
@@ -240,10 +243,12 @@ class NetworkServer(QObject):
                     elif message['type'] == 'get_adapter_info':
                         self._send_adapter_info(client_id, message.get('adapter'))
                     elif message['type'] == 'get_speeds':
-                        self._send_speeds(client_id, message.get('adapter_name'))
+                        self._send_speeds(client_id, message.get('adapter'))
                     elif message['type'] == 'start_measurement':
                         # Запускаем измерение для указанного адаптера
                         adapter_name = message.get('adapter')
+                        if not adapter_name:
+                            raise ValueError("Не указан адаптер для измерения")
                         self.network_monitor.start_measurement(adapter_name)
                         response = {
                             'type': 'measurement_started',
@@ -317,27 +322,52 @@ class NetworkServer(QObject):
         except Exception as e:
             self.log_message.emit(f"Ошибка при отправке информации об адаптере: {str(e)}")
             
-    def _send_speeds(self, client_id, adapter_name):
+    def _send_speeds(self, client_id, adapter_name=None):
         """Отправка информации о скорости сети клиенту"""
         if client_id not in self.clients:
             return
             
         try:
+            # Если адаптер не указан, используем текущий измеряемый адаптер
+            if adapter_name is None:
+                adapter_name = self.network_monitor.selected_adapter
+                
+            if adapter_name is None:
+                self.log_message.emit("Ошибка: не указан адаптер для измерения скорости")
+                error_message = {
+                    'type': 'error',
+                    'message': 'Не указан адаптер для измерения скорости'
+                }
+                self._send_message(client_id, error_message)
+                return
+                
             # Получаем реальные данные о скорости через NetworkMonitor
             speeds = self.network_monitor.get_current_speeds()
-            
+            if speeds is None:
+                error_message = {
+                    'type': 'error',
+                    'message': 'Не удалось получить данные о скорости'
+                }
+                self._send_message(client_id, error_message)
+                return
+                
             # Формируем и отправляем сообщение
             message = {
                 'type': 'speeds',
                 'adapter_name': adapter_name,
                 'speeds': speeds,
-                'time': time.strftime('%H:%M:%S')
+                'time': f"{speeds['stats']['duration']} сек"  # Используем длительность замера вместо текущего времени
             }
             self._send_message(client_id, message)
             self.log_message.emit(f"Отправлена информация о скорости для адаптера {adapter_name}")
             
         except Exception as e:
             self.log_message.emit(f"Ошибка при отправке информации о скорости: {str(e)}")
+            error_message = {
+                'type': 'error',
+                'message': str(e)
+            }
+            self._send_message(client_id, error_message)
             
     def _send_message(self, client_id, message):
         """Отправка сообщения клиенту"""

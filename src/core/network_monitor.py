@@ -1,5 +1,6 @@
 import psutil
 import wmi  # Добавляем импорт WMI
+import time
 
 class NetworkMonitor:
     def __init__(self):
@@ -13,6 +14,7 @@ class NetworkMonitor:
         self.total_download = 0
         self.total_upload = 0
         self.measurement_count = 0
+        self.measurement_start_time = None  # Добавляем время начала измерения
         # Инициализируем WMI
         try:
             self.wmi = wmi.WMI()
@@ -89,10 +91,12 @@ class NetworkMonitor:
         self.total_download = 0
         self.total_upload = 0
         self.measurement_count = 0
+        self.measurement_start_time = time.time()  # Записываем время начала
 
     def stop_measurement(self):
         """Останавливает измерение скорости"""
         self.selected_adapter = None
+        self.measurement_start_time = None
 
     def get_current_speeds(self):
         """Получает текущую скорость сети"""
@@ -126,6 +130,11 @@ class NetworkMonitor:
             self.download_speeds.pop(0)
             self.upload_speeds.pop(0)
 
+        # Вычисляем длительность измерения
+        measurement_duration = 0
+        if self.measurement_start_time:
+            measurement_duration = int(time.time() - self.measurement_start_time)
+
         return {
             'download': recv_speed,
             'upload': sent_speed,
@@ -133,6 +142,7 @@ class NetworkMonitor:
                 'max_download': self.max_download,
                 'max_upload': self.max_upload,
                 'avg_download': self.total_download / self.measurement_count,
-                'avg_upload': self.total_upload / self.measurement_count
+                'avg_upload': self.total_upload / self.measurement_count,
+                'duration': measurement_duration  # Добавляем длительность измерения
             }
         } 

@@ -22,7 +22,6 @@ class MeasurementManagement:
         self.is_measuring = True
         self.window.measureSpeedButton.setText("Стоп")
         self.timer.start(1000)  # Обновляем каждую секунду
-        self.window.elapsed_time = 0  # Инициализируем время
 
     def stop_measurement(self):
         """Останавливает замер скорости"""
@@ -30,33 +29,53 @@ class MeasurementManagement:
         self.is_measuring = False
         self.window.measureSpeedButton.setText("Старт")
         self.timer.stop()
+        # Сбрасываем значения в таблице
+        self.window.adapterInfoTable.item(8, 1).setText('-')  # Время
+        for i in range(9, 15):  # Скорости
+            self.window.adapterInfoTable.item(i, 1).setText('-')
 
     def update_measurements(self):
         """Обновляет все измерения (время и график)"""
         if self.window.selected_adapter:
             speeds = self.window.network_monitor.get_current_speeds()
+            print("Полученные данные о скорости:", speeds)  # Отладочная информация
             if speeds:
-                 # Обновляем график
+                # Обновляем график
                 self.window.graph_builder.update_graph(
                     self.window.network_monitor.download_speeds,
                     self.window.network_monitor.upload_speeds
                 )
+                print("Обновляем таблицу со значениями:", speeds['stats'])  # Отладочная информация
                 self.update_table(speeds)
-                self.window.elapsed_time += 1  # Увеличиваем время на 1 секунду
-                self.window.adapterInfoTable.item(8, 1).setText(f"{self.window.elapsed_time} сек")
 
                 # Проверяем, не истекло ли время
-                if self.window.target_time > 0 and self.window.elapsed_time >= self.window.target_time:
+                if self.window.target_time > 0 and speeds['stats']['duration'] >= self.window.target_time:
                     self.stop_measurement()  # Останавливаем замер, если время истекло
 
     def update_table(self, speeds):
         """Обновляет значения скорости в таблице"""
+        if not speeds or 'stats' not in speeds:
+            print("Нет данных для обновления таблицы")  # Отладочная информация
+            return
+            
         stats = speeds['stats']
+        print(f"Обновляем время замера: {stats.get('duration', 0)} сек")  # Отладочная информация
+        # Обновляем время измерения
+        try:
+            self.window.adapterInfoTable.item(8, 1).setText(f"{stats.get('duration', 0)} сек")
+        except Exception as e:
+            print(f"Ошибка при обновлении времени замера: {e}")  # Отладочная информация
+        # Обновляем текущую скорость загрузки
         self.window.adapterInfoTable.item(9, 1).setText(f"{speeds['download']:.2f} КБ/с")
+        # Обновляем максимальную скорость загрузки
         self.window.adapterInfoTable.item(10, 1).setText(f"{stats['max_download']:.2f} КБ/с")
+        # Обновляем среднюю скорость загрузки
         self.window.adapterInfoTable.item(11, 1).setText(f"{stats['avg_download']:.2f} КБ/с")
+        # Обновляем текущую скорость отдачи
         self.window.adapterInfoTable.item(12, 1).setText(f"{speeds['upload']:.2f} КБ/с")
+        # Обновляем максимальную скорость отдачи
         self.window.adapterInfoTable.item(13, 1).setText(f"{stats['max_upload']:.2f} КБ/с")
+        # Обновляем среднюю скорость отдачи
         self.window.adapterInfoTable.item(14, 1).setText(f"{stats['avg_upload']:.2f} КБ/с")
 
     def clear_graphs(self):
@@ -70,10 +89,6 @@ class MeasurementManagement:
             self.window.adapterInfoTable.item(8, 1).setText('-')  # Время
             for i in range(9, 15):  # Скорости
                 self.window.adapterInfoTable.item(i, 1).setText('-')
-            
-            # Сбрасываем счетчик времени
-            self.window.elapsed_time = 0
-            
                 
             # Очищаем данные в network_monitor
             if hasattr(self.window, "network_monitor"):
@@ -86,6 +101,7 @@ class MeasurementManagement:
                 self.window.network_monitor.measurement_count = 0
         except Exception as e:
             print(f"Ошибка при очистке графиков: {e}")
+
     def on_time_changed(self, text=None):
         """Обработчик изменения времени"""
         try:
