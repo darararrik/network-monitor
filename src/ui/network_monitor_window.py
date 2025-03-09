@@ -10,6 +10,7 @@ from src.ui.measurement_management import MeasurementManagement
 from src.ui.remote.monitoring import RemoteMonitoring
 from src.ui.ping_tool import PingTool
 from src.ui.traceroute_tool import TracerouteTool
+from src.ui.network_discovery import NetworkDiscovery
 
 class NetworkMonitorWindow(QMainWindow):
     def __init__(self):
@@ -43,6 +44,9 @@ class NetworkMonitorWindow(QMainWindow):
         
         # Инициализация инструмента трассировки
         self.traceroute_tool = TracerouteTool(self)
+        
+        # Инициализация инструмента поиска сети
+        self.network_discovery = NetworkDiscovery(self)
 
     def setup_ui(self):
             """Настройка пользовательского интерфейса"""
