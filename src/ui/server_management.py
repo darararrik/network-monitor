@@ -69,6 +69,10 @@ class ServerManagement:
             except ValueError:
                 self.log_message("Некорректный порт. Используется порт 5000.")
                 port = 5000
+        
+        # Очищаем лог перед запуском
+        if hasattr(self.window, "serverLogWidget"):
+            self.window.serverLogWidget.clear()
                 
         # Запускаем сервер
         self.server.start_server(port)
@@ -140,11 +144,22 @@ class ServerManagement:
             import time
             timestamp = time.strftime("[%H:%M:%S] ")
             
-            # Добавляем сообщение в лог
-            self.window.serverLogWidget.append(f"{timestamp}{message}")
+            # Проверяем тип виджета и используем соответствующий метод
+            from PyQt6.QtWidgets import QTextEdit, QPlainTextEdit, QLineEdit
+            from PyQt6.QtGui import QTextCursor
             
-            # Прокручиваем до последнего сообщения
-            self.window.serverLogWidget.moveCursor(self.window.serverLogWidget.textCursor().End)
+            widget = self.window.serverLogWidget
+            if isinstance(widget, (QTextEdit, QPlainTextEdit)):
+                # Для многострочных виджетов используем append
+                widget.append(f"{timestamp}{message}")
+                # Прокручиваем до последнего сообщения
+                widget.moveCursor(QTextCursor.MoveOperation.End)
+            elif isinstance(widget, QLineEdit):
+                # Для однострочных виджетов просто устанавливаем текст
+                widget.setText(f"{timestamp}{message}")
+            else:
+                # Для других типов виджетов пишем в консоль
+                print(f"{timestamp}{message}")
             
     def get_server_instance(self):
         """Получение экземпляра сервера"""

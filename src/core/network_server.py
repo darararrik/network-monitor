@@ -23,6 +23,57 @@ class NetworkServer(QObject):
         self.server_thread = None
         self.network_monitor = NetworkMonitor()
         
+    def get_ip_addresses(self):
+        """Получает список всех IP-адресов компьютера"""
+        ip_addresses = []
+        try:
+            # Получаем имя компьютера
+            hostname = socket.gethostname()
+            # Получаем все IP-адреса для этого имени
+            ips = socket.getaddrinfo(hostname, None)
+            
+            # Фильтруем только IPv4 адреса
+            for ip in ips:
+                if ip[0] == socket.AF_INET:  # только IPv4
+                    ip_addr = ip[4][0]
+                    if not ip_addr.startswith('127.'):  # исключаем локальный адрес
+                        ip_addresses.append(ip_addr)
+                        
+            # Добавляем внешний IP, если есть подключение к интернету
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                external_ip = s.getsockname()[0]
+                if external_ip not in ip_addresses:
+                    ip_addresses.append(external_ip)
+                s.close()
+            except:
+                pass
+                
+        except Exception as e:
+            self.log_message.emit(f"Ошибка при получении IP-адресов: {e}")
+        
+        return ip_addresses
+
+    def get_local_ip(self):
+        """Получает локальный IPv4 адрес компьютера"""
+        try:
+            # Создаем временное подключение для определения IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            # Если не удалось определить IP через подключение,
+            # пробуем получить через hostname
+            try:
+                hostname = socket.gethostname()
+                ip = socket.gethostbyname(hostname)
+                return ip
+            except:
+                return "127.0.0.1"
+
     def start_server(self, port=5000):
         """Запуск сервера на указанном порту"""
         if self.is_running:
@@ -30,11 +81,18 @@ class NetworkServer(QObject):
             return False
             
         try:
+            # Получаем локальный IP адрес
+            local_ip = self.get_local_ip()
+            
             # Создаем серверный сокет
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.server_socket.bind(('0.0.0.0', port))
+            self.server_socket.bind((local_ip, port))
             self.server_socket.listen(5)
+            
+            # Выводим информацию о запуске
+            self.log_message.emit("\n=== Информация о сервере ===")
+            self.log_message.emit(f"Сервер запущен на {local_ip}:{port}")
             
             # Запускаем сервер в отдельном потоке
             self.is_running = True
@@ -42,14 +100,14 @@ class NetworkServer(QObject):
             self.server_thread.daemon = True
             self.server_thread.start()
             
-            self.log_message.emit(f"Сервер запущен на порту {port}")
+            self.log_message.emit(f"Сервер успешно запущен и готов к подключениям")
             self.server_started.emit(port)
             return True
             
         except Exception as e:
             self.log_message.emit(f"Ошибка при запуске сервера: {str(e)}")
             return False
-            
+
     def stop_server(self):
         """Остановка сервера"""
         if not self.is_running:
