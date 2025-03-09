@@ -234,15 +234,22 @@ class NetworkServer(QObject):
             
             # Обрабатываем различные типы сообщений
             if 'type' in message:
-                # Здесь можно добавить логику обработки различных типов сообщений
-                if message['type'] == 'get_adapters':
-                    self._send_adapters_list(client_id)
-                elif message['type'] == 'get_adapter_info':
-                    self._send_adapter_info(client_id, message.get('adapter_name'))
-                elif message['type'] == 'get_speeds':
-                    self._send_speeds(client_id, message.get('adapter_name'))
-                else:
-                    self.log_message.emit(f"Неизвестный тип сообщения: {message['type']}")
+                try:
+                    if message['type'] == 'get_adapters':
+                        self._send_adapters_list(client_id)
+                    elif message['type'] == 'get_adapter_info':
+                        self._send_adapter_info(client_id, message.get('adapter'))
+                    elif message['type'] == 'get_speeds':
+                        self._send_speeds(client_id, message.get('adapter_name'))
+                    else:
+                        self.log_message.emit(f"Неизвестный тип сообщения: {message['type']}")
+                except Exception as e:
+                    error_message = {
+                        'type': 'error',
+                        'message': str(e)
+                    }
+                    self._send_message(client_id, error_message)
+                    self.log_message.emit(f"Ошибка при обработке сообщения: {str(e)}")
             else:
                 self.log_message.emit(f"Получено сообщение без типа: {message}")
                 
@@ -257,9 +264,8 @@ class NetworkServer(QObject):
             return
             
         try:
-            # Здесь будет логика получения списка адаптеров
-            # Пока отправляем тестовые данные
-            adapters = ["Adapter 1", "Adapter 2", "Ethernet", "Wi-Fi"]
+            # Получаем реальный список адаптеров через NetworkMonitor
+            adapters = self.network_monitor.get_adapters()
             
             # Формируем и отправляем сообщение
             message = {
@@ -267,6 +273,7 @@ class NetworkServer(QObject):
                 'adapters': adapters
             }
             self._send_message(client_id, message)
+            self.log_message.emit(f"Отправлен список адаптеров: {adapters}")
             
         except Exception as e:
             self.log_message.emit(f"Ошибка при отправке списка адаптеров: {str(e)}")
@@ -277,18 +284,8 @@ class NetworkServer(QObject):
             return
             
         try:
-            # Здесь будет логика получения информации об адаптере
-            # Пока отправляем тестовые данные
-            adapter_info = {
-                'id': '12345',
-                'description': f'Description for {adapter_name}',
-                'interface_type': 'Ethernet',
-                'ip': '192.168.1.100',
-                'mac': '00:11:22:33:44:55',
-                'speed': '1 Gbps',
-                'mtu': '1500',
-                'status': 'Up'
-            }
+            # Получаем реальную информацию об адаптере через NetworkMonitor
+            adapter_info = self.network_monitor.get_adapter_info(adapter_name)
             
             # Формируем и отправляем сообщение
             message = {
@@ -297,6 +294,7 @@ class NetworkServer(QObject):
                 'info': adapter_info
             }
             self._send_message(client_id, message)
+            self.log_message.emit(f"Отправлена информация об адаптере {adapter_name}")
             
         except Exception as e:
             self.log_message.emit(f"Ошибка при отправке информации об адаптере: {str(e)}")
@@ -307,21 +305,18 @@ class NetworkServer(QObject):
             return
             
         try:
-            # Здесь будет логика получения информации о скорости сети
-            # Пока отправляем тестовые данные
-            import random
-            download = random.uniform(1.0, 10.0)  # KB/s
-            upload = random.uniform(0.5, 5.0)  # KB/s
+            # Получаем реальные данные о скорости через NetworkMonitor
+            speeds = self.network_monitor.get_current_speeds()
             
             # Формируем и отправляем сообщение
             message = {
                 'type': 'speeds',
                 'adapter_name': adapter_name,
-                'download': download,
-                'upload': upload,
+                'speeds': speeds,
                 'time': time.strftime('%H:%M:%S')
             }
             self._send_message(client_id, message)
+            self.log_message.emit(f"Отправлена информация о скорости для адаптера {adapter_name}")
             
         except Exception as e:
             self.log_message.emit(f"Ошибка при отправке информации о скорости: {str(e)}")
