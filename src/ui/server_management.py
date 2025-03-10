@@ -71,6 +71,16 @@ class ServerManagement:
         if hasattr(self.window, "remoteMeasureSpeedButton"):
             self.window.remoteMeasureSpeedButton.clicked.connect(self.toggle_monitoring)
             
+        # Настраиваем кнопку сброса графика
+        if hasattr(self.window, "remoteClearGraphs"):
+            self.window.remoteClearGraphs.clicked.connect(self.clear_graphs)
+            
+        # Настраиваем чекбоксы видимости графиков
+        if hasattr(self.window, "remoteHideDownload"):
+            self.window.remoteHideDownload.stateChanged.connect(self.on_hide_download_changed)
+        if hasattr(self.window, "remoteHideUpload"):
+            self.window.remoteHideUpload.stateChanged.connect(self.on_hide_upload_changed)
+            
         # Инициализируем таблицу информации
         if hasattr(self.window, "remoteInfoTable"):
             table = self.window.remoteInfoTable
@@ -338,12 +348,33 @@ class ServerManagement:
         if hasattr(self.window, "remoteInfoTable"):
             self.log_message(f"Заполняем таблицу информацией об адаптере: {info}")
             table = self.window.remoteInfoTable
-            table.setRowCount(len(info))
-            table.setColumnCount(2)
-            table.setHorizontalHeaderLabels(['Параметр', 'Значение'])
             
-            for row, (key, value) in enumerate(info.items()):
-                table.setItem(row, 0, QTableWidgetItem(str(key)))
+            # Определяем параметры и их порядок
+            parameters = [
+                ('id', 'ID адаптера'),
+                ('description', 'Описание'),
+                ('interface_type', 'Тип интерфейса'),
+                ('ip', 'IP адрес'),
+                ('mac', 'MAC адрес'),
+                ('speed', 'Скорость адаптера'),
+                ('mtu', 'MTU'),
+                ('status', 'Статус'),
+                ('time', 'Время замера'),
+                ('current_download', 'Загрузка - текущая'),
+                ('max_download', 'Загрузка - максимальная'),
+                ('avg_download', 'Загрузка - средняя'),
+                ('current_upload', 'Отдача - текущая'),
+                ('max_upload', 'Отдача - максимальная'),
+                ('avg_upload', 'Отдача - средняя')
+            ]
+            
+            table.setRowCount(len(parameters))
+            
+            for row, (key, display_name) in enumerate(parameters):
+                table.setItem(row, 0, QTableWidgetItem(display_name))
+                value = info.get(key, '-')
+                if isinstance(value, (int, float)) and 'speed' in key:
+                    value = f"{value:.2f} Кбит/с"
                 table.setItem(row, 1, QTableWidgetItem(str(value)))
                 
             # Настраиваем ширину столбцов
@@ -474,3 +505,21 @@ class ServerManagement:
     def get_server_instance(self):
         """Получение экземпляра сервера для использования в других компонентах"""
         return self.server 
+
+    def on_hide_download_changed(self, state):
+        """Обработчик изменения состояния чекбокса скрытия графика загрузки"""
+        if hasattr(self, "graph_builder"):
+            self.graph_builder.set_download_visible(not bool(state))
+            
+    def on_hide_upload_changed(self, state):
+        """Обработчик изменения состояния чекбокса скрытия графика отдачи"""
+        if hasattr(self, "graph_builder"):
+            self.graph_builder.set_upload_visible(not bool(state))
+            
+    def clear_graphs(self):
+        """Очистка графиков"""
+        if hasattr(self, "graph_builder"):
+            self.graph_builder.clear_graphs()
+            self.download_speeds = []
+            self.upload_speeds = []
+            self.log_message("Графики очищены") 
