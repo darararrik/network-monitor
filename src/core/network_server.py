@@ -13,15 +13,20 @@ class NetworkServer(QObject):
     server_started = pyqtSignal(int)  # port
     server_stopped = pyqtSignal()
     log_message = pyqtSignal(str)  # сообщение для лога
+    adapters_list_received = pyqtSignal(str, list)  # client_id, adapters
+    adapter_info_received = pyqtSignal(str, str, dict)  # client_id, adapter, info
+    speeds_data_received = pyqtSignal(str, str, dict)  # client_id, adapter, data
     
     def __init__(self):
         super().__init__()
         self.server_socket = None
         self.is_running = False
         self.clients = {}  # {client_id: (client_socket, client_address)}
+        self.client_info = {}  # {client_id: {'pc_name': 'PC_NAME'}}
         self.client_id_counter = 0
         self.server_thread = None
         self.network_monitor = NetworkMonitor()
+        self.port = None
         
     def get_ip_addresses(self):
         """Получает список всех IP-адресов компьютера"""
@@ -88,7 +93,9 @@ class NetworkServer(QObject):
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.server_socket.bind((local_ip, port))
-            self.server_socket.listen(5)
+            
+            # Сохраняем порт
+            self.port = port
             
             # Выводим информацию о запуске
             self.log_message.emit("\n=== Информация о сервере ===")
@@ -141,8 +148,14 @@ class NetworkServer(QObject):
             self.log_message.emit(f"Ошибка при остановке сервера: {str(e)}")
             
     def _accept_connections(self):
-        """Прием подключений от клиентов (запускается в отдельном потоке)"""
+        """Цикл приема подключений"""
         try:
+            # Настраиваем сокет для приема подключений
+            self.server_socket.listen(5)
+            self.log_message.emit(f"Сервер запущен на порту {self.port}")
+            self.server_started.emit(self.port)
+            
+            # Устанавливаем таймаут для проверки флага остановки
             self.server_socket.settimeout(1.0)  # Таймаут для проверки флага остановки
             
             while self.is_running:
@@ -150,9 +163,9 @@ class NetworkServer(QObject):
                     # Принимаем подключение от клиента
                     client_socket, client_address = self.server_socket.accept()
                     
-                    # Добавляем клиента в список
-                    client_id = self.client_id_counter
-                    self.client_id_counter += 1
+                    # Добавляем клиента в список, используя строковый ID в формате ip:port
+                    client_id = f"{client_address[0]}:{client_address[1]}"
+                    self.log_message.emit(f"Новое подключение с ID: {client_id}")
                     self.clients[client_id] = (client_socket, client_address)
                     
                     # Запускаем поток для обработки клиента
@@ -235,8 +248,16 @@ class NetworkServer(QObject):
             # Логируем полученное сообщение
             self.log_message.emit(f"Получено от {client_address[0]}:{client_address[1]}: {message}")
             
-            # Обрабатываем различные типы сообщений
+            # Сначала пробуем обработать как сообщение от клиентского приложения
             if 'type' in message:
+                # Проверяем, есть ли обработчик для этого типа сообщения в _process_client_message
+                if message['type'] in ['client_info', 'adapters_list', 'adapter_info', 'speeds_data']:
+                    # Обрабатываем как сообщение от клиентского приложения
+                    self.log_message.emit(f"Обрабатываем сообщение типа {message['type']} от клиента {client_id}")
+                    self._process_client_message(client_id, message)
+                    return
+                    
+                # Обрабатываем различные типы запросов к серверу
                 try:
                     if message['type'] == 'get_adapters':
                         self._send_adapters_list(client_id)
@@ -254,7 +275,8 @@ class NetworkServer(QObject):
                             'type': 'measurement_started',
                             'adapter': adapter_name
                         }
-                        self._send_message(client_id, response)
+                        client_socket = self.clients[client_id][0]
+                        self._send_message(client_socket, response)
                         self.log_message.emit(f"Запущено измерение для адаптера {adapter_name}")
                     elif message['type'] == 'stop_measurement':
                         # Останавливаем измерение
@@ -262,7 +284,8 @@ class NetworkServer(QObject):
                         response = {
                             'type': 'measurement_stopped'
                         }
-                        self._send_message(client_id, response)
+                        client_socket = self.clients[client_id][0]
+                        self._send_message(client_socket, response)
                         self.log_message.emit("Измерение остановлено")
                     else:
                         self.log_message.emit(f"Неизвестный тип сообщения: {message['type']}")
@@ -271,7 +294,8 @@ class NetworkServer(QObject):
                         'type': 'error',
                         'message': str(e)
                     }
-                    self._send_message(client_id, error_message)
+                    client_socket = self.clients[client_id][0]
+                    self._send_message(client_socket, error_message)
                     self.log_message.emit(f"Ошибка при обработке сообщения: {str(e)}")
             else:
                 self.log_message.emit(f"Получено сообщение без типа: {message}")
@@ -295,7 +319,7 @@ class NetworkServer(QObject):
                 'type': 'adapters_list',
                 'adapters': adapters
             }
-            self._send_message(client_id, message)
+            self._send_message(self.clients[client_id][0], message)
             self.log_message.emit(f"Отправлен список адаптеров: {adapters}")
             
         except Exception as e:
@@ -316,7 +340,7 @@ class NetworkServer(QObject):
                 'adapter_name': adapter_name,
                 'info': adapter_info
             }
-            self._send_message(client_id, message)
+            self._send_message(self.clients[client_id][0], message)
             self.log_message.emit(f"Отправлена информация об адаптере {adapter_name}")
             
         except Exception as e:
@@ -338,7 +362,7 @@ class NetworkServer(QObject):
                     'type': 'error',
                     'message': 'Не указан адаптер для измерения скорости'
                 }
-                self._send_message(client_id, error_message)
+                self._send_message(self.clients[client_id][0], error_message)
                 return
                 
             # Получаем реальные данные о скорости через NetworkMonitor
@@ -348,7 +372,7 @@ class NetworkServer(QObject):
                     'type': 'error',
                     'message': 'Не удалось получить данные о скорости'
                 }
-                self._send_message(client_id, error_message)
+                self._send_message(self.clients[client_id][0], error_message)
                 return
                 
             # Формируем и отправляем сообщение
@@ -358,7 +382,7 @@ class NetworkServer(QObject):
                 'speeds': speeds,
                 'time': f"{speeds['stats']['duration']} сек"  # Используем длительность замера вместо текущего времени
             }
-            self._send_message(client_id, message)
+            self._send_message(self.clients[client_id][0], message)
             self.log_message.emit(f"Отправлена информация о скорости для адаптера {adapter_name}")
             
         except Exception as e:
@@ -367,32 +391,27 @@ class NetworkServer(QObject):
                 'type': 'error',
                 'message': str(e)
             }
-            self._send_message(client_id, error_message)
+            self._send_message(self.clients[client_id][0], error_message)
             
-    def _send_message(self, client_id, message):
-        """Отправка сообщения клиенту"""
-        if client_id not in self.clients:
-            return False
-            
+    def _send_message(self, client_socket, message):
+        """Отправка сообщения клиенту
+        
+        Args:
+            client_socket: Сокет клиента
+            message: Сообщение для отправки
+        """
         try:
-            # Получаем сокет клиента
-            client_socket, client_address = self.clients[client_id]
-            
             # Сериализуем сообщение в JSON
-            data = json.dumps(message).encode('utf-8')
-            
+            json_data = json.dumps(message)
             # Отправляем данные
-            client_socket.sendall(data)
-            return True
-            
+            client_socket.sendall(json_data.encode('utf-8'))
         except Exception as e:
-            self.log_message.emit(f"Ошибка при отправке сообщения клиенту {client_address[0]}:{client_address[1]}: {str(e)}")
-            return False
+            self.log_message.emit(f"Ошибка при отправке сообщения: {str(e)}")
             
     def broadcast_message(self, message):
         """Отправка сообщения всем подключенным клиентам"""
         for client_id in list(self.clients.keys()):
-            self._send_message(client_id, message)
+            self._send_message(self.clients[client_id][0], message)
             
     def get_clients_count(self):
         """Получение количества подключенных клиентов"""
@@ -445,4 +464,163 @@ class NetworkServer(QObject):
             
         except Exception as e:
             print(f"Ошибка при обработке команды: {e}")
-            return {'type': 'error', 'message': str(e)} 
+            return {'type': 'error', 'message': str(e)}
+
+    def request_adapters_list(self, client_id):
+        """Запрос списка адаптеров у клиента
+        
+        Args:
+            client_id: Идентификатор клиента в формате ip:port
+        """
+        self.log_message.emit(f"Запрашиваем список адаптеров для клиента {client_id}")
+        self.log_message.emit(f"Сервер запущен: {self.is_running}")
+        self.log_message.emit(f"Список клиентов: {list(self.clients.keys())}")
+        
+        if not self.is_running:
+            self.log_message.emit("Ошибка: сервер не запущен")
+            return False
+            
+        if client_id not in self.clients:
+            self.log_message.emit(f"Ошибка: клиент {client_id} не найден в списке")
+            return False
+            
+        message = {
+            'type': 'get_adapters',
+        }
+        
+        try:
+            client_socket = self.clients[client_id][0]
+            self._send_message(client_socket, message)
+            return True
+        except Exception as e:
+            self.log_message.emit(f"Ошибка при запросе списка адаптеров: {e}")
+            return False
+            
+    def request_adapter_info(self, client_id, adapter):
+        """Запрос информации об адаптере у клиента
+        
+        Args:
+            client_id: Идентификатор клиента в формате ip:port
+            adapter: Имя адаптера
+        """
+        if not self.is_running or client_id not in self.clients:
+            return False
+            
+        message = {
+            'type': 'get_adapter_info',
+            'adapter': adapter
+        }
+        
+        try:
+            client_socket = self.clients[client_id][0]
+            self._send_message(client_socket, message)
+            return True
+        except Exception as e:
+            self.log_message.emit(f"Ошибка при запросе информации об адаптере: {e}")
+            return False
+            
+    def start_monitoring(self, client_id, adapter):
+        """Запуск мониторинга скорости на клиенте
+        
+        Args:
+            client_id: Идентификатор клиента в формате ip:port
+            adapter: Имя адаптера
+        """
+        if not self.is_running or client_id not in self.clients:
+            return False
+            
+        message = {
+            'type': 'start_monitoring',
+            'adapter': adapter
+        }
+        
+        try:
+            client_socket = self.clients[client_id][0]
+            self._send_message(client_socket, message)
+            return True
+        except Exception as e:
+            self.log_message.emit(f"Ошибка при запуске мониторинга: {e}")
+            return False
+            
+    def stop_monitoring(self, client_id):
+        """Остановка мониторинга скорости на клиенте
+        
+        Args:
+            client_id: Идентификатор клиента в формате ip:port
+        """
+        if not self.is_running or client_id not in self.clients:
+            return False
+            
+        message = {
+            'type': 'stop_monitoring'
+        }
+        
+        try:
+            client_socket = self.clients[client_id][0]
+            self._send_message(client_socket, message)
+            return True
+        except Exception as e:
+            self.log_message.emit(f"Ошибка при остановке мониторинга: {e}")
+            return False
+
+    def _process_client_message(self, client_id, message):
+        """Обработка сообщения от клиента
+        
+        Args:
+            client_id: Идентификатор клиента
+            message: Полученное сообщение
+            
+        Returns:
+            dict: Ответ клиенту или None, если ответ не требуется
+        """
+        try:
+            message_type = message.get('type')
+            
+            if message_type == 'client_info':
+                # Клиент прислал информацию о себе
+                pc_name = message.get('pc_name', 'Неизвестный ПК')
+                self.client_info[client_id] = {'pc_name': pc_name}
+                self.log_message.emit(f"Получена информация о клиенте {client_id}: {pc_name}")
+                return None
+                
+            elif message_type == 'adapters_list':
+                # Клиент прислал список адаптеров
+                adapters = message.get('adapters', [])
+                self.adapters_list_received.emit(client_id, adapters)
+                return None
+                
+            elif message_type == 'adapter_info':
+                # Клиент прислал информацию об адаптере
+                adapter = message.get('adapter', '')
+                info = message.get('info', {})
+                self.adapter_info_received.emit(client_id, adapter, info)
+                return None
+                
+            elif message_type == 'speeds_data':
+                # Клиент прислал данные о скорости
+                adapter = message.get('adapter', '')
+                data = message.get('data', {})
+                self.speeds_data_received.emit(client_id, adapter, data)
+                return None
+                
+            else:
+                # Неизвестный тип сообщения
+                self.log_message.emit(f"Неизвестный тип сообщения от клиента {client_id}: {message_type}")
+                return None
+                
+        except Exception as e:
+            self.log_message.emit(f"Ошибка при обработке сообщения от клиента {client_id}: {e}")
+            return None
+            
+    def get_client_name(self, client_id):
+        """Получение имени ПК клиента
+        
+        Args:
+            client_id: Идентификатор клиента
+            
+        Returns:
+            str: Имя ПК клиента или "Неизвестный ПК"
+        """
+        if client_id in self.client_info:
+            return self.client_info[client_id].get('pc_name', 'Неизвестный ПК')
+        return 'Неизвестный ПК' 
