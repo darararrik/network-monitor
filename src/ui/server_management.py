@@ -18,6 +18,9 @@ class ServerManagement:
         self.selected_adapter = None
         self.is_monitoring = False
         
+        # Словарь для хранения данных клиентов
+        self.clients_data = {}  # формат: {client_id: {'adapter': name, 'download_speeds': [], 'upload_speeds': []}}
+        
         # Инициализация данных для графика
         self.download_speeds = []
         self.upload_speeds = []
@@ -224,16 +227,22 @@ class ServerManagement:
         client_id = f"{ip}:{port}"
         self.log_message(f"Клиент отключен: {client_id}")
         
+        # Удаляем сохраненные данные клиента
+        keys_to_remove = [key for key in self.clients_data.keys() if key.startswith(client_id)]
+        for key in keys_to_remove:
+            del self.clients_data[key]
+            self.log_message(f"Удалены сохраненные данные для {key}")
+        
         # Удаляем клиента из списка на вкладке Сервер
         if hasattr(self.window, "clientsListWidget"):
-            items = self.window.clientsListWidget.findItems(client_id, 0)
+            items = self.window.clientsListWidget.findItems(client_id, Qt.MatchFlag.MatchStartsWith)
             for item in items:
                 row = self.window.clientsListWidget.row(item)
                 self.window.clientsListWidget.takeItem(row)
                 
         # Удаляем клиента из списка на вкладке Удаленный доступ
         if hasattr(self.window, "clientsList"):
-            items = self.window.clientsList.findItems(client_id, 0)
+            items = self.window.clientsList.findItems(client_id, Qt.MatchFlag.MatchStartsWith)
             for item in items:
                 row = self.window.clientsList.row(item)
                 self.window.clientsList.takeItem(row)
@@ -252,6 +261,10 @@ class ServerManagement:
             if hasattr(self.window, "remoteMeasureSpeedButton"):
                 self.window.remoteMeasureSpeedButton.setEnabled(False)
                 
+            # Очищаем график
+            if hasattr(self, "graph_builder"):
+                self.graph_builder.clear_graphs()
+            
     def on_server_started(self, port):
         """Обработка запуска сервера"""
         self.log_message(f"Сервер запущен на порту {port}")
@@ -291,6 +304,10 @@ class ServerManagement:
             
     def on_client_selected(self, item):
         """Обработка выбора клиента из списка"""
+        # Сохраняем данные текущего клиента перед переключением
+        if self.selected_client and self.selected_adapter:
+            self.save_current_client_data()
+            
         # Получаем идентификатор клиента из данных элемента
         client_id = item.data(Qt.ItemDataRole.UserRole)
         if not client_id:
@@ -312,15 +329,33 @@ class ServerManagement:
         # Сбрасываем выбранный адаптер
         self.selected_adapter = None
         
-        # Отключаем кнопку замера скорости
+        # Очищаем график при смене клиента
+        if hasattr(self, "graph_builder"):
+            self.graph_builder.clear_graphs()
+            self.download_speeds = []
+            self.upload_speeds = []
+            
+        # Отключаем кнопку замера скорости и сбрасываем состояние мониторинга
         if hasattr(self.window, "remoteMeasureSpeedButton"):
             self.window.remoteMeasureSpeedButton.setEnabled(False)
+            self.window.remoteMeasureSpeedButton.setText("Начать замер")
+            self.is_monitoring = False
             
     def on_adapter_selected(self, item):
         """Обработка выбора адаптера из списка"""
         if not self.selected_client:
             self.log_message("Не выбран клиент, нельзя запросить информацию об адаптере")
             return
+            
+        # Сохраняем данные текущего адаптера перед переключением
+        if self.selected_adapter:
+            self.save_current_client_data()
+            
+        # Очищаем график перед переключением на новый адаптер
+        if hasattr(self, "graph_builder"):
+            self.graph_builder.clear_graphs()
+            self.download_speeds = []
+            self.upload_speeds = []
             
         self.selected_adapter = item.text()
         self.log_message(f"Выбран адаптер: {self.selected_adapter}")
@@ -330,11 +365,57 @@ class ServerManagement:
         result = self.server.request_adapter_info(self.selected_client, self.selected_adapter)
         self.log_message(f"Результат запроса информации об адаптере: {result}")
         
-        # Включаем кнопку замера скорости
+        # Восстанавливаем сохраненные данные для этого клиента и адаптера
+        self.restore_client_data()
+        
+        # Проверяем, идут ли данные для этого адаптера
+        client_key = f"{self.selected_client}:{self.selected_adapter}"
+        is_receiving_data = client_key in self.clients_data and len(self.clients_data[client_key]['download_speeds']) > 0
+        self.is_monitoring = is_receiving_data
+        
+        # Включаем кнопку замера скорости и устанавливаем правильный текст
         if hasattr(self.window, "remoteMeasureSpeedButton"):
             self.window.remoteMeasureSpeedButton.setEnabled(True)
-            self.window.remoteMeasureSpeedButton.setText("Начать замер")
+            self.window.remoteMeasureSpeedButton.setText("Остановить замер" if is_receiving_data else "Начать замер")
             
+    def save_current_client_data(self):
+        """Сохраняет текущие данные клиента"""
+        if not self.selected_client or not self.selected_adapter:
+            return
+            
+        client_key = f"{self.selected_client}:{self.selected_adapter}"
+        self.clients_data[client_key] = {
+            'adapter': self.selected_adapter,
+            'download_speeds': self.download_speeds.copy(),
+            'upload_speeds': self.upload_speeds.copy()
+        }
+        self.log_message(f"Сохранены данные для {client_key}: {len(self.download_speeds)} точек")
+            
+    def restore_client_data(self):
+        """Восстанавливает сохраненные данные клиента"""
+        if not self.selected_client or not self.selected_adapter:
+            return
+            
+        client_key = f"{self.selected_client}:{self.selected_adapter}"
+        if client_key in self.clients_data:
+            data = self.clients_data[client_key]
+            self.download_speeds = data['download_speeds'].copy()
+            self.upload_speeds = data['upload_speeds'].copy()
+            
+            # Обновляем график сохраненными данными
+            if hasattr(self, "graph_builder") and self.download_speeds and self.upload_speeds:
+                try:
+                    self.log_message(f"Восстанавливаем данные для {client_key}: {len(self.download_speeds)} точек")
+                    self.graph_builder.update_graph(self.download_speeds, self.upload_speeds)
+                except Exception as e:
+                    self.log_message(f"Ошибка при восстановлении данных графика: {e}")
+                    import traceback
+                    self.log_message(traceback.format_exc())
+        else:
+            self.download_speeds = []
+            self.upload_speeds = []
+            self.log_message(f"Нет сохраненных данных для {client_key}")
+        
     def on_adapters_list_received(self, client_id, adapters):
         """Обработка полученного списка адаптеров"""
         self.log_message(f"Получен список адаптеров от клиента {client_id}: {adapters}")
@@ -450,84 +531,110 @@ class ServerManagement:
             
     def on_speeds_data_received(self, client_id, adapter, data):
         """Обработка данных о скорости от клиента"""
-        if self.selected_client != client_id or self.selected_adapter != adapter:
+        self.log_message(f"Получены данные о скорости для {adapter} от {client_id}: {data}")
+        
+        # Сохраняем данные для всех клиентов/адаптеров
+        client_key = f"{client_id}:{adapter}"
+        if client_key not in self.clients_data:
+            self.clients_data[client_key] = {
+                'adapter': adapter,
+                'download_speeds': [],
+                'upload_speeds': []
+            }
+            
+        # Добавляем новые данные
+        client_data = self.clients_data[client_key]
+        client_data['download_speeds'].append(data['download'])
+        client_data['upload_speeds'].append(data['upload'])
+        
+        # Ограничиваем количество точек
+        max_points = 60
+        if len(client_data['download_speeds']) > max_points:
+            client_data['download_speeds'] = client_data['download_speeds'][-max_points:]
+            client_data['upload_speeds'] = client_data['upload_speeds'][-max_points:]
+            
+        # Если это текущий выбранный клиент и адаптер, обновляем локальные данные и график
+        if self.selected_client == client_id and self.selected_adapter == adapter:
+            self.download_speeds = client_data['download_speeds'].copy()
+            self.upload_speeds = client_data['upload_speeds'].copy()
+            
+            # Обновляем график
+            try:
+                if hasattr(self, "graph_builder"):
+                    self.log_message(f"Обновляем график: {len(self.download_speeds)} точек")
+                    self.graph_builder.update_graph(self.download_speeds, self.upload_speeds)
+            except Exception as e:
+                self.log_message(f"Ошибка при обновлении графика: {e}")
+                import traceback
+                self.log_message(traceback.format_exc())
+                
+            # Обновляем информацию в таблице
+            self.update_speed_table(data)
+            
+    def update_speed_table(self, data):
+        """Обновление информации о скорости в таблице"""
+        if not hasattr(self.window, "remoteInfoTable"):
             return
             
-        self.log_message(f"Получены данные о скорости для {adapter}: {data}")
+        table = self.window.remoteInfoTable
+        
+        # Проверяем, есть ли уже строки для скорости
+        speed_rows = []
+        for row in range(table.rowCount()):
+            param = table.item(row, 0).text()
+            if "Загрузка" in param or "Отдача" in param:
+                speed_rows.append(row)
+                
+        # Если строк для скорости нет, добавляем их
+        if not speed_rows:
+            # Добавляем строки для текущей скорости
+            current_row = table.rowCount()
+            table.setRowCount(current_row + 2)
             
-        # Обновляем информацию о скорости в таблице
-        if hasattr(self.window, "remoteInfoTable"):
-            table = self.window.remoteInfoTable
+            table.setItem(current_row, 0, QTableWidgetItem("Загрузка - текущая"))
+            table.setItem(current_row, 1, QTableWidgetItem(f"{data['download']:.2f} Кбит/с"))
             
-            # Проверяем, есть ли уже строки для скорости
-            speed_rows = []
+            table.setItem(current_row + 1, 0, QTableWidgetItem("Отдача - текущая"))
+            table.setItem(current_row + 1, 1, QTableWidgetItem(f"{data['upload']:.2f} Кбит/с"))
+            
+            # Добавляем статистику
+            if 'stats' in data:
+                stats = data['stats']
+                stat_row = current_row + 2
+                table.setRowCount(stat_row + 4)
+                
+                table.setItem(stat_row, 0, QTableWidgetItem("Загрузка - максимальная"))
+                table.setItem(stat_row, 1, QTableWidgetItem(f"{stats['max_download']:.2f} Кбит/с"))
+                
+                table.setItem(stat_row + 1, 0, QTableWidgetItem("Загрузка - средняя"))
+                table.setItem(stat_row + 1, 1, QTableWidgetItem(f"{stats['avg_download']:.2f} Кбит/с"))
+                
+                table.setItem(stat_row + 2, 0, QTableWidgetItem("Отдача - максимальная"))
+                table.setItem(stat_row + 2, 1, QTableWidgetItem(f"{stats['max_upload']:.2f} Кбит/с"))
+                
+                table.setItem(stat_row + 3, 0, QTableWidgetItem("Отдача - средняя"))
+                table.setItem(stat_row + 3, 1, QTableWidgetItem(f"{stats['avg_upload']:.2f} Кбит/с"))
+        else:
+            # Обновляем существующие строки
             for row in range(table.rowCount()):
                 param = table.item(row, 0).text()
-                if "Загрузка" in param or "Отдача" in param:
-                    speed_rows.append(row)
-                    
-            # Если строк для скорости нет, добавляем их
-            if not speed_rows:
-                # Добавляем строки для текущей скорости
-                current_row = table.rowCount()
-                table.setRowCount(current_row + 2)
+                if param == "Загрузка - текущая":
+                    table.setItem(row, 1, QTableWidgetItem(f"{data['download']:.2f} Кбит/с"))
+                elif param == "Отдача - текущая":
+                    table.setItem(row, 1, QTableWidgetItem(f"{data['upload']:.2f} Кбит/с"))
                 
-                table.setItem(current_row, 0, QTableWidgetItem("Загрузка - текущая"))
-                table.setItem(current_row, 1, QTableWidgetItem(f"{data['download']:.2f} Кбит/с"))
-                
-                table.setItem(current_row + 1, 0, QTableWidgetItem("Отдача - текущая"))
-                table.setItem(current_row + 1, 1, QTableWidgetItem(f"{data['upload']:.2f} Кбит/с"))
-                
-                # Добавляем статистику
+                # Обновляем статистику
                 if 'stats' in data:
                     stats = data['stats']
-                    stat_row = current_row + 2
-                    table.setRowCount(stat_row + 4)
-                    
-                    table.setItem(stat_row, 0, QTableWidgetItem("Загрузка - максимальная"))
-                    table.setItem(stat_row, 1, QTableWidgetItem(f"{stats['max_download']:.2f} Кбит/с"))
-                    
-                    table.setItem(stat_row + 1, 0, QTableWidgetItem("Загрузка - средняя"))
-                    table.setItem(stat_row + 1, 1, QTableWidgetItem(f"{stats['avg_download']:.2f} Кбит/с"))
-                    
-                    table.setItem(stat_row + 2, 0, QTableWidgetItem("Отдача - максимальная"))
-                    table.setItem(stat_row + 2, 1, QTableWidgetItem(f"{stats['max_upload']:.2f} Кбит/с"))
-                    
-                    table.setItem(stat_row + 3, 0, QTableWidgetItem("Отдача - средняя"))
-                    table.setItem(stat_row + 3, 1, QTableWidgetItem(f"{stats['avg_upload']:.2f} Кбит/с"))
-            else:
-                # Обновляем существующие строки
-                for row in range(table.rowCount()):
-                    param = table.item(row, 0).text()
-                    if param == "Загрузка - текущая":
-                        table.setItem(row, 1, QTableWidgetItem(f"{data['download']:.2f} Кбит/с"))
-                    elif param == "Отдача - текущая":
-                        table.setItem(row, 1, QTableWidgetItem(f"{data['upload']:.2f} Кбит/с"))
-                    
-                    # Обновляем статистику
-                    if 'stats' in data:
-                        stats = data['stats']
-                        if param == "Загрузка - максимальная":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['max_download']:.2f} Кбит/с"))
-                        elif param == "Загрузка - средняя":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['avg_download']:.2f} Кбит/с"))
-                        elif param == "Отдача - максимальная":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['max_upload']:.2f} Кбит/с"))
-                        elif param == "Отдача - средняя":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['avg_upload']:.2f} Кбит/с"))
+                    if param == "Загрузка - максимальная":
+                        table.setItem(row, 1, QTableWidgetItem(f"{stats['max_download']:.2f} Кбит/с"))
+                    elif param == "Загрузка - средняя":
+                        table.setItem(row, 1, QTableWidgetItem(f"{stats['avg_download']:.2f} Кбит/с"))
+                    elif param == "Отдача - максимальная":
+                        table.setItem(row, 1, QTableWidgetItem(f"{stats['max_upload']:.2f} Кбит/с"))
+                    elif param == "Отдача - средняя":
+                        table.setItem(row, 1, QTableWidgetItem(f"{stats['avg_upload']:.2f} Кбит/с"))
         
-        # Обновляем график скорости, если он есть
-        try:
-            if hasattr(self, "graph_builder"):
-                # Обновляем график напрямую с одним значением
-                self.log_message(f"Обновляем график: download={data['download']}, upload={data['upload']}")
-                # Используем метод update_graph, который сам обработает точечные значения
-                self.graph_builder.update_graph(data['download'], data['upload'])
-        except Exception as e:
-            self.log_message(f"Ошибка при обновлении графика: {e}")
-            import traceback
-            self.log_message(traceback.format_exc())
-            
     def get_server_instance(self):
         """Получение экземпляра сервера для использования в других компонентах"""
         return self.server 
@@ -543,11 +650,20 @@ class ServerManagement:
             self.graph_builder.set_upload_visible(not bool(state))
             
     def clear_graphs(self):
-        """Очистка графиков"""
+        """Очистка графиков и сохраненных данных"""
         if hasattr(self, "graph_builder"):
+            # Очищаем график
             self.graph_builder.clear_graphs()
             self.download_speeds = []
             self.upload_speeds = []
+            
+            # Удаляем сохраненные данные для текущего клиента и адаптера
+            if self.selected_client and self.selected_adapter:
+                client_key = f"{self.selected_client}:{self.selected_adapter}"
+                if client_key in self.clients_data:
+                    del self.clients_data[client_key]
+                    self.log_message(f"Удалены сохраненные данные для {client_key}")
+                    
             self.log_message("Графики очищены")
             
     def on_time_changed(self, text=None):
@@ -584,146 +700,6 @@ class ServerManagement:
             if remaining > 0:
                 self.log_message(f"Осталось времени: {remaining} сек")
                 
-    def on_measurement_timer(self):
-        """Обработчик таймера измерения"""
-        if not self.is_monitoring:
-            return
-            
-        self.elapsed_time += 1
-        
-        # Если достигли целевого времени, останавливаем измерение
-        if self.target_time > 0 and self.elapsed_time >= self.target_time:
-            self.stop_monitoring()
-            return
-            
-        # Обновляем статус в логе каждые 5 секунд
-        if self.elapsed_time % 5 == 0:
-            remaining = self.target_time - self.elapsed_time if self.target_time > 0 else 0
-            if remaining > 0:
-                self.log_message(f"Осталось времени: {remaining} сек")
-                
-    def start_monitoring(self):
-        """Запуск мониторинга скорости"""
-        if not self.selected_client or not self.selected_adapter:
-            return
-            
-        # Запускаем мониторинг на сервере
-        self.server.start_monitoring(self.selected_client, self.selected_adapter)
-        self.is_monitoring = True
-        
-        # Сбрасываем счетчик времени
-        self.elapsed_time = 0
-        
-        # Запускаем таймер
-        self.measurement_timer.start(1000)  # каждую секунду
-        
-        # Обновляем текст кнопки
-        if hasattr(self.window, "remoteMeasureSpeedButton"):
-            self.window.remoteMeasureSpeedButton.setText("Остановить замер")
-            
-        self.log_message(f"Запущен мониторинг скорости для {self.selected_adapter} на клиенте {self.selected_client}")
-        if self.target_time > 0:
-            self.log_message(f"Установлено время замера: {self.target_time} сек")
-            
-    def stop_monitoring(self):
-        """Остановка мониторинга скорости"""
-        if not self.selected_client:
-            return
-            
-        # Останавливаем мониторинг на сервере
-        self.server.stop_monitoring(self.selected_client)
-        self.is_monitoring = False
-        
-        # Останавливаем таймер
-        self.measurement_timer.stop()
-        self.elapsed_time = 0
-        
-        # Обновляем текст кнопки
-        if hasattr(self.window, "remoteMeasureSpeedButton"):
-            self.window.remoteMeasureSpeedButton.setText("Начать замер")
-            
-        self.log_message(f"Остановлен мониторинг скорости на клиенте {self.selected_client}")
-            
-    def on_speeds_data_received(self, client_id, adapter, data):
-        """Обработка данных о скорости от клиента"""
-        if self.selected_client != client_id or self.selected_adapter != adapter:
-            return
-            
-        self.log_message(f"Получены данные о скорости для {adapter}: {data}")
-            
-        # Обновляем информацию о скорости в таблице
-        if hasattr(self.window, "remoteInfoTable"):
-            table = self.window.remoteInfoTable
-            
-            # Проверяем, есть ли уже строки для скорости
-            speed_rows = []
-            for row in range(table.rowCount()):
-                param = table.item(row, 0).text()
-                if "Загрузка" in param or "Отдача" in param:
-                    speed_rows.append(row)
-                    
-            # Если строк для скорости нет, добавляем их
-            if not speed_rows:
-                # Добавляем строки для текущей скорости
-                current_row = table.rowCount()
-                table.setRowCount(current_row + 2)
-                
-                table.setItem(current_row, 0, QTableWidgetItem("Загрузка - текущая"))
-                table.setItem(current_row, 1, QTableWidgetItem(f"{data['download']:.2f} Кбит/с"))
-                
-                table.setItem(current_row + 1, 0, QTableWidgetItem("Отдача - текущая"))
-                table.setItem(current_row + 1, 1, QTableWidgetItem(f"{data['upload']:.2f} Кбит/с"))
-                
-                # Добавляем статистику
-                if 'stats' in data:
-                    stats = data['stats']
-                    stat_row = current_row + 2
-                    table.setRowCount(stat_row + 4)
-                    
-                    table.setItem(stat_row, 0, QTableWidgetItem("Загрузка - максимальная"))
-                    table.setItem(stat_row, 1, QTableWidgetItem(f"{stats['max_download']:.2f} Кбит/с"))
-                    
-                    table.setItem(stat_row + 1, 0, QTableWidgetItem("Загрузка - средняя"))
-                    table.setItem(stat_row + 1, 1, QTableWidgetItem(f"{stats['avg_download']:.2f} Кбит/с"))
-                    
-                    table.setItem(stat_row + 2, 0, QTableWidgetItem("Отдача - максимальная"))
-                    table.setItem(stat_row + 2, 1, QTableWidgetItem(f"{stats['max_upload']:.2f} Кбит/с"))
-                    
-                    table.setItem(stat_row + 3, 0, QTableWidgetItem("Отдача - средняя"))
-                    table.setItem(stat_row + 3, 1, QTableWidgetItem(f"{stats['avg_upload']:.2f} Кбит/с"))
-            else:
-                # Обновляем существующие строки
-                for row in range(table.rowCount()):
-                    param = table.item(row, 0).text()
-                    if param == "Загрузка - текущая":
-                        table.setItem(row, 1, QTableWidgetItem(f"{data['download']:.2f} Кбит/с"))
-                    elif param == "Отдача - текущая":
-                        table.setItem(row, 1, QTableWidgetItem(f"{data['upload']:.2f} Кбит/с"))
-                    
-                    # Обновляем статистику
-                    if 'stats' in data:
-                        stats = data['stats']
-                        if param == "Загрузка - максимальная":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['max_download']:.2f} Кбит/с"))
-                        elif param == "Загрузка - средняя":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['avg_download']:.2f} Кбит/с"))
-                        elif param == "Отдача - максимальная":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['max_upload']:.2f} Кбит/с"))
-                        elif param == "Отдача - средняя":
-                            table.setItem(row, 1, QTableWidgetItem(f"{stats['avg_upload']:.2f} Кбит/с"))
-        
-        # Обновляем график скорости, если он есть
-        try:
-            if hasattr(self, "graph_builder"):
-                # Обновляем график напрямую с одним значением
-                self.log_message(f"Обновляем график: download={data['download']}, upload={data['upload']}")
-                # Используем метод update_graph, который сам обработает точечные значения
-                self.graph_builder.update_graph(data['download'], data['upload'])
-        except Exception as e:
-            self.log_message(f"Ошибка при обновлении графика: {e}")
-            import traceback
-            self.log_message(traceback.format_exc())
-            
     def get_server_instance(self):
         """Получение экземпляра сервера для использования в других компонентах"""
         return self.server 
@@ -739,9 +715,18 @@ class ServerManagement:
             self.graph_builder.set_upload_visible(not bool(state))
             
     def clear_graphs(self):
-        """Очистка графиков"""
+        """Очистка графиков и сохраненных данных"""
         if hasattr(self, "graph_builder"):
+            # Очищаем график
             self.graph_builder.clear_graphs()
             self.download_speeds = []
             self.upload_speeds = []
+            
+            # Удаляем сохраненные данные для текущего клиента и адаптера
+            if self.selected_client and self.selected_adapter:
+                client_key = f"{self.selected_client}:{self.selected_adapter}"
+                if client_key in self.clients_data:
+                    del self.clients_data[client_key]
+                    self.log_message(f"Удалены сохраненные данные для {client_key}")
+                    
             self.log_message("Графики очищены") 
